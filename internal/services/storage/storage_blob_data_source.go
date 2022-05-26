@@ -38,6 +38,12 @@ func dataSourceStorageBlob() *pluginsdk.Resource {
 				Required: true,
 			},
 
+			"fetch_content": {
+				Type:     pluginsdk.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+
 			"type": {
 				Type:     pluginsdk.TypeString,
 				Computed: true,
@@ -110,16 +116,20 @@ func dataSourceStorageBlobRead(d *pluginsdk.ResourceData, meta interface{}) erro
 		return fmt.Errorf("retrieving properties for Blob %q (Container %q / Account %q): %s", name, containerName, accountName, err)
 	}
 
-	blobInput := blobs.GetInput{}
-	blob, err := blobsClient.Get(ctx, accountName, containerName, name, blobInput)
-	if err != nil {
-		if utils.ResponseWasNotFound(blob.Response) {
-			log.Printf("[INFO] Blob %q was not found in Container %q / Account %q - assuming removed & removing from state...", name, containerName, accountName)
-			d.SetId("")
-			return nil
-		}
+	d.Set("content", "")
+	if d.Get("fetch_content").(bool) {
+		blobInput := blobs.GetInput{}
+		blob, err := blobsClient.Get(ctx, accountName, containerName, name, blobInput)
+		if err != nil {
+			if utils.ResponseWasNotFound(blob.Response) {
+				log.Printf("[INFO] Blob %q was not found in Container %q / Account %q - assuming removed & removing from state...", name, containerName, accountName)
+				d.SetId("")
+				return nil
+			}
 
-		return fmt.Errorf("retrieving content for Blob %q (Container %q / Account %q): %s", name, containerName, accountName, err)
+			return fmt.Errorf("retrieving content for Blob %q (Container %q / Account %q): %s", name, containerName, accountName, err)
+		}
+		d.Set("content", string(blob.Contents))
 	}
 
 	d.Set("name", name)
@@ -128,7 +138,6 @@ func dataSourceStorageBlobRead(d *pluginsdk.ResourceData, meta interface{}) erro
 
 	d.Set("access_tier", string(props.AccessTier))
 	d.Set("content_type", props.ContentType)
-	d.Set("content", string(blob.Contents))
 
 	// Set the ContentMD5 value to md5 hash in hex
 	contentMD5 := ""
