@@ -58,6 +58,11 @@ func dataSourceStorageBlob() *pluginsdk.Resource {
 				Computed: true,
 			},
 
+			"content": {
+				Type:     pluginsdk.TypeString,
+				Computed: true,
+			},
+
 			"url": {
 				Type:     pluginsdk.TypeString,
 				Computed: true,
@@ -105,12 +110,25 @@ func dataSourceStorageBlobRead(d *pluginsdk.ResourceData, meta interface{}) erro
 		return fmt.Errorf("retrieving properties for Blob %q (Container %q / Account %q): %s", name, containerName, accountName, err)
 	}
 
+	blobInput := blobs.GetInput{}
+	blob, err := blobsClient.Get(ctx, accountName, containerName, name, blobInput)
+	if err != nil {
+		if utils.ResponseWasNotFound(blob.Response) {
+			log.Printf("[INFO] Blob %q was not found in Container %q / Account %q - assuming removed & removing from state...", name, containerName, accountName)
+			d.SetId("")
+			return nil
+		}
+
+		return fmt.Errorf("retrieving content for Blob %q (Container %q / Account %q): %s", name, containerName, accountName, err)
+	}
+
 	d.Set("name", name)
 	d.Set("storage_container_name", containerName)
 	d.Set("storage_account_name", accountName)
 
 	d.Set("access_tier", string(props.AccessTier))
 	d.Set("content_type", props.ContentType)
+	d.Set("content", string(blob.Contents))
 
 	// Set the ContentMD5 value to md5 hash in hex
 	contentMD5 := ""
